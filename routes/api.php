@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DomainController;
 use App\Http\Controllers\Api\ModuleController;
+use App\Http\Controllers\Api\StripeController;
 use App\Http\Controllers\Api\TeacherRequestController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -44,10 +45,13 @@ Route::middleware('auth:sanctum')->group(function () {
     //modules
     Route::post('/courses/{courseSlug}/modules', [ModuleController::class, 'store']);
 
-    Route::post('/courses/{course}/lessons/{lesson}/blocks/{block}/quiz/submit', 
+    Route::post('/courses/{course}/lessons/{lesson}/blocks/{block}/quiz/submit',
         [CourseController::class, 'submitQuiz']
     );
-
+    //stripe
+    Route::post('/stripe/connect', [StripeController::class, 'createConnectAccount']);
+    Route::get('/stripe/status', [StripeController::class, 'getAccountStatus']);
+Route::post('/stripe/refresh-link', [StripeController::class, 'refreshOnboarding']);
 
 
 
@@ -58,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/courses', action: [CourseController::class, 'index']);
     Route::get('/courses/{course}', [CourseController::class, 'show']);
     Route::get('/courses/{course:slug}', [CourseController::class, 'showBySlug']);
-
+    Route::get('/stripe/success', [StripeController::class, 'onboardingSuccess'])->name('stripe.success');
+Route::get('/stripe/refresh', [StripeController::class, 'onboardingRefresh'])->name('stripe.refresh');
 
 
