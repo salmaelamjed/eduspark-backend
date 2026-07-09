@@ -18,7 +18,7 @@ class StripeController extends Controller
     }
 
     /**
-     * Créer un compte Stripe Connect Express (API v2 - CORRECTED)
+     * Créer un compte Stripe Connect Express (API v2)
      */
     public function createConnectAccount(Request $request)
     {
@@ -41,7 +41,6 @@ class StripeController extends Controller
         }
 
         try {
-            // ✅ Création du compte
             $account = $this->stripe->v2->core->accounts->create([
                 'contact_email' => $user->email,
                 'display_name' => $user->name,
@@ -76,8 +75,6 @@ class StripeController extends Controller
                 'stripe_onboarding_completed' => false,
             ]);
 
-            // ✅ CORRECTION: Génération correcte du lien d'onboarding
-            // Il faut utiliser l'API v1 pour les account links car l'API v2 est encore en beta
             $accountLink = $this->stripe->accountLinks->create([
                 'account' => $account->id,
                 'refresh_url' => route('stripe.refresh'),
@@ -88,7 +85,7 @@ class StripeController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Compte Stripe créé avec succès.',
-                'onboarding_url' => $accountLink->url, // ✅ URL correcte
+                'onboarding_url' => $accountLink->url,
                 'account_id' => $account->id,
                 'account_type' => 'merchant'
             ]);
@@ -110,6 +107,88 @@ class StripeController extends Controller
     }
 
     /**
+     * Vérifier le statut du compte Stripe (API v2)
+     */
+    public function getAccountStatus(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user->stripe_account_id) {
+            return response()->json([
+                'success' => true,
+                'has_account' => false
+            ]);
+        }
+
+        try {
+            $account = $this->stripe->v2->core->accounts->retrieve(
+                $user->stripe_account_id,
+                ['include' => ['configuration.merchant', 'identity', 'requirements', 'defaults']]
+            );
+
+            //  Vérifier si le compte est complet (API v2)
+            $isComplete = false;
+            $chargesEnabled = false;
+            $payoutsEnabled = false;
+
+            // Vérifier les capabilities dans la configuration merchant
+            if (isset($account->configuration->merchant->capabilities)) {
+                $capabilities = $account->configuration->merchant->capabilities;
+
+                // Vérifier que card_payments est active
+                if (isset($capabilities->card_payments)) {
+                    $chargesEnabled = $capabilities->card_payments->status === 'active';
+                    $payoutsEnabled = $capabilities->card_payments->status === 'active';
+                }
+            }
+
+            // Vérifier également les requirements pour savoir si tout est complet
+            $requirements = $account->requirements ?? null;
+            $requirementsComplete = true;
+
+            if ($requirements && isset($requirements->entries) && !empty($requirements->entries)) {
+                $requirementsComplete = false;
+            }
+
+            // Le compte est complet si les paiements sont activés ET que les prérequis sont remplis
+            $isComplete = $chargesEnabled && $payoutsEnabled && $requirementsComplete;
+
+            // Mettre à jour le statut dans la base de données
+            if ($isComplete !== (bool)$user->stripe_onboarding_completed) {
+                $user->update([
+                    'stripe_onboarding_completed' => $isComplete,
+                    'stripe_account_updated_at' => now()
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'has_account' => true,
+                'account_id' => $user->stripe_account_id,
+                'onboarding_completed' => $isComplete,
+                'status' => $isComplete ? 'active' : 'pending',
+                'charges_enabled' => $chargesEnabled,
+                'payouts_enabled' => $payoutsEnabled,
+                'requirements' => $requirements,
+                'capabilities' => $capabilities ?? null,
+            ]);
+
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe account status error:', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Impossible de récupérer le statut du compte.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Rafraîchir le lien d'onboarding
      */
     public function refreshOnboarding(Request $request)
@@ -124,7 +203,6 @@ class StripeController extends Controller
         }
 
         try {
-            // ✅ Utilisation de l'API v1 pour les account links
             $accountLink = $this->stripe->accountLinks->create([
                 'account' => $user->stripe_account_id,
                 'refresh_url' => route('stripe.refresh'),
@@ -151,73 +229,14 @@ class StripeController extends Controller
     }
 
     /**
-     * Vérifier le statut du compte Stripe
-     */
-    public function getAccountStatus(Request $request)
-    {
-        $user = $request->user();
-
-        if (!$user->stripe_account_id) {
-            return response()->json([
-                'success' => true,
-                'has_account' => false
-            ]);
-        }
-
-        try {
-            // ✅ Utilisation de l'API v1 pour récupérer les détails du compte
-            $account = $this->stripe->accounts->retrieve($user->stripe_account_id);
-
-            // Vérifier si le compte est complet
-            $isComplete = false;
-            
-            if ($account->charges_enabled && $account->payouts_enabled) {
-                $isComplete = true;
-            }
-
-            // Mettre à jour le statut
-            if ($isComplete !== (bool)$user->stripe_onboarding_completed) {
-                $user->update([
-                    'stripe_onboarding_completed' => $isComplete,
-                    'stripe_account_updated_at' => now()
-                ]);
-            }
-
-            return response()->json([
-                'success' => true,
-                'has_account' => true,
-                'account_id' => $user->stripe_account_id,
-                'onboarding_completed' => $isComplete,
-                'status' => $isComplete ? 'active' : 'pending',
-                'charges_enabled' => $account->charges_enabled ?? false,
-                'payouts_enabled' => $account->payouts_enabled ?? false,
-                'requirements' => $account->requirements ?? null,
-            ]);
-
-        } catch (ApiErrorException $e) {
-            Log::error('Stripe account status error:', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Impossible de récupérer le statut du compte.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Callback de succès (redirection frontend)
      */
     public function onboardingSuccess(Request $request)
     {
         // Récupérer l'account_id depuis la requête
         $accountId = $request->query('account_id');
-        
+
         if ($accountId) {
-            // Mettre à jour le statut du compte
             $user = $request->user();
             if ($user && $user->stripe_account_id === $accountId) {
                 $user->update([
@@ -227,7 +246,7 @@ class StripeController extends Controller
             }
         }
 
-        $redirectUrl = config('app.frontend_url') . '/teacher/dashboard?stripe=onboarding-complete';
+        $redirectUrl = config('app.frontend_url') . '/dashboard/integrations?stripe=onboarding-complete';
         return redirect($redirectUrl);
     }
 
@@ -236,12 +255,12 @@ class StripeController extends Controller
      */
     public function onboardingRefresh(Request $request)
     {
-        $redirectUrl = config('app.frontend_url') . '/teacher/dashboard?stripe=onboarding-refresh';
+        $redirectUrl = config('app.frontend_url') . '/dashboard/integrations?stripe=onboarding-refresh';
         return redirect($redirectUrl);
     }
 
     /**
-     * Fonction de débogage pour voir les détails du compte
+     * Fonction de débogage pour voir les détails du compte (API v2)
      */
     public function debugAccount(Request $request)
     {
@@ -255,48 +274,33 @@ class StripeController extends Controller
         }
 
         try {
-            $account = $this->stripe->accounts->retrieve($user->stripe_account_id);
+            $account = $this->stripe->v2->core->accounts->retrieve(
+                $user->stripe_account_id,
+                ['include' => ['configuration.merchant', 'identity', 'defaults', 'requirements']]
+            );
 
             return response()->json([
                 'success' => true,
-                'account' => $account
+                'account' => $account,
+                'account_id' => $user->stripe_account_id,
+                'account_created_at' => $user->stripe_account_created_at,
+                'onboarding_completed' => $user->stripe_onboarding_completed,
             ]);
 
         } catch (ApiErrorException $e) {
-            return response()->json([
-                'success' => false,
+            Log::error('Stripe debug account error:', [
+                'user_id' => $user->id,
                 'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Créer un lien de connexion pour le dashboard Stripe
-     */
-    public function createLoginLink(Request $request)
-    {
-        $user = $request->user();
-
-        if (!$user->stripe_account_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Aucun compte Stripe trouvé'
-            ], 400);
-        }
-
-        try {
-            $loginLink = $this->stripe->accounts->createLoginLink($user->stripe_account_id);
-
-            return response()->json([
-                'success' => true,
-                'login_url' => $loginLink->url
             ]);
 
-        } catch (ApiErrorException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la création du lien de connexion: ' . $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ], 500);
         }
     }
+
+
 }
+
