@@ -23,6 +23,9 @@ class Course extends Model
         'domain_id',
         'teacher_id',
         'status',
+         'currency',
+        'stripe_product_id',
+        'stripe_price_id'
     ];
 
     protected $casts = [
@@ -58,5 +61,5 @@ class Course extends Model
         );
     }
 
-    
+
 }

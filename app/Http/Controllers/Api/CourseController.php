@@ -132,7 +132,7 @@ public function index(Request $request)
             ])],
 
 
-       
+
             // 1. VALIDATION DES SETTINGS (Sous-types : headings, lists, callouts)
             'modules.*.lessons.*.blocks.*.settings' => 'nullable|array',
             // Si le type est 'heading', le niveau h1-h6 est requis
@@ -157,7 +157,7 @@ public function index(Request $request)
             'required_if:modules.*.lessons.*.blocks.*.type,quiz',
             'nullable', 'string', 'max:255'
         ],
-        
+
                 // Description du quiz (obligatoire si le bloc est de type quiz)
                 'modules.*.lessons.*.blocks.*.settings.quiz_description' => [
                     'required_if:modules.*.lessons.*.blocks.*.type,quiz',
@@ -165,7 +165,7 @@ public function index(Request $request)
                 ],
             // Score minimum pour réussir le quiz
             'modules.*.lessons.*.blocks.*.quiz_data.settings.passing_score_percent' => 'required_with:modules.*.lessons.*.blocks.*.quiz_data|integer|min:0|max:100',
-            
+
 
              'modules.*.lessons.*.blocks.*.quiz_data.settings.shuffle_questions' => 'nullable|boolean',
             'modules.*.lessons.*.blocks.*.quiz_data.settings.show_explanation_after_submit' => 'nullable|boolean',
@@ -324,103 +324,197 @@ public function index(Request $request)
  * Afficher un cours complet avec toute sa structure nested
  * (course → modules → lessons → blocks)
  */
-public function show(Course $course)
-    {
-        $course->load([
-            'domain:id,name,slug',
-            'teacher:id,name',
-            'modules' => function ($query) {
-                $query->orderBy('order')->with([
-                    'lessons' => function ($q) {
-                        $q->orderBy('order')->with([
-                            'blocks' => function ($qb) {
-                                $qb->orderBy('order');
-                            }
-                        ]);
+public function show(Request $request, Course $course)
+{
+    $access = \App\Http\Controllers\Api\CourseAccessController::resolve($course, $request->user());
+
+    $course->load([
+        'domain:id,name,slug',
+        'teacher:id,name',
+        'modules' => function ($query) use ($access) {
+            $query->orderBy('order')->with([
+                'lessons' => function ($q) use ($access) {
+                    $q->orderBy('order');
+                    // Sans accès : ne charger que les leçons marquées preview,
+                    // et uniquement leurs blocks marqués preview.
+                    if (!$access['has_access']) {
+                        $q->where('is_preview', true);
                     }
-                ]);
-            }
-        ]);
+                    $q->with(['blocks' => function ($qb) use ($access) {
+                        $qb->orderBy('order');
+                        if (!$access['has_access']) {
+                            $qb->where('is_preview', true);
+                        }
+                    }]);
+                }
+            ]);
+        }
+    ]);
 
-        return response()->json([
-            'id'          => $course->id,
-            'title'       => $course->title,
-            'slug'        => $course->slug,
-            'description' => $course->description,
-            'level'       => $course->level,
-            'language'    => $course->language,
-            'price'       => $course->price,
-            'is_free'     => $course->is_free,
-            'status'      => $course->status,
-            'thumbnail'   => $course->thumbnail ? '/api/proxy/storage/' . $course->thumbnail : null,
-            'domain'      => $course->domain ? [
-                'id'   => $course->domain->id,
-                'name' => $course->domain->name,
-                'slug' => $course->domain->slug,
-            ] : null,
-            'teacher'     => $course->teacher ? [
-                'id'   => $course->teacher->id,
-                'name' => $course->teacher->name,
-            ] : null,
-            'created_at'  => $course->created_at->toDateTimeString(),
-            'updated_at'  => $course->updated_at->toDateTimeString(),
-            'modules' => $course->modules->map(function ($module) {
-                return [
-                    'id'          => $module->id,
-                    'title'       => $module->title,
-                    'description' => $module->description,
-                    'order'       => $module->order,
-                    'created_at'  => $module->created_at->toDateTimeString(),
-                    'lessons' => $module->lessons->map(function ($lesson) {
-                        return [
-                            'id'          => $lesson->id,
-                            'title'       => $lesson->title,
-                            'slug'        => $lesson->slug,
-                            'order'       => $lesson->order,
-                            'is_preview'  => $lesson->is_preview,
-                            'created_at'  => $lesson->created_at->toDateTimeString(),
-                            'blocks' => $lesson->blocks->map(function ($block) {
-
-                                $quizData = $block->quiz_data;
-                                // PROTECTION ANTI-TRICHE : Supprimer les réponses si le bloc est un quiz
-                                if ($block->type === 'quiz' && isset($quizData['questions'])) {
-                                    foreach ($quizData['questions'] as &$question) {
-                                        unset($question['correct_answer']);
-                                        unset($question['explanation']);
-                                    }
+    return response()->json([
+        'id'          => $course->id,
+        'title'       => $course->title,
+        'slug'        => $course->slug,
+        'description' => $course->description,
+        'level'       => $course->level,
+        'language'    => $course->language,
+        'price'       => $course->price,
+        'is_free'     => $course->is_free,
+        'status'      => $course->status,
+        'thumbnail'   => $course->thumbnail ? '/api/proxy/storage/' . $course->thumbnail : null,
+        'has_access'  => $access['has_access'], // NEW — front s'en sert directement
+        'domain'      => $course->domain ? [
+            'id'   => $course->domain->id,
+            'name' => $course->domain->name,
+            'slug' => $course->domain->slug,
+        ] : null,
+        'teacher'     => $course->teacher ? [
+            'id'   => $course->teacher->id,
+            'name' => $course->teacher->name,
+        ] : null,
+        'created_at'  => $course->created_at->toDateTimeString(),
+        'updated_at'  => $course->updated_at->toDateTimeString(),
+        'modules' => $course->modules->map(function ($module) {
+            return [
+                'id'          => $module->id,
+                'title'       => $module->title,
+                'description' => $module->description,
+                'order'       => $module->order,
+                'created_at'  => $module->created_at->toDateTimeString(),
+                'lessons' => $module->lessons->map(function ($lesson) {
+                    return [
+                        'id'          => $lesson->id,
+                        'title'       => $lesson->title,
+                        'slug'        => $lesson->slug,
+                        'order'       => $lesson->order,
+                        'is_preview'  => $lesson->is_preview,
+                        'created_at'  => $lesson->created_at->toDateTimeString(),
+                        'blocks' => $lesson->blocks->map(function ($block) {
+                            $quizData = $block->quiz_data;
+                            if ($block->type === 'quiz' && isset($quizData['questions'])) {
+                                foreach ($quizData['questions'] as &$question) {
+                                    unset($question['correct_answer']);
+                                    unset($question['explanation']);
                                 }
-
-                                return [
-                                    'id'               => $block->id,
-                                    'type'             => $block->type,
-                                    'content'          => $block->content,
-                                    'media_url'        => $block->media_url ? '/api/proxy/storage/' . $block->media_url : null,
-                                    'settings'         => $block->settings,
-                                    'duration_seconds' => $block->duration_seconds,
-                                    'language'         => $block->language,
-                                    'quiz_data'        => $quizData,
-                                    'code_data'        => $block->code_data,
-                                    'order'            => $block->order,
-                                    'is_preview'       => $block->is_preview,
-                                    'created_at'       => $block->created_at->toDateTimeString(),
-                                ];
-                            })->values()->toArray(),
-                        ];
-                    })->values()->toArray(),
-                ];
-            })->values()->toArray(),
-        ]);
-    }
+                            }
+                            return [
+                                'id'               => $block->id,
+                                'type'             => $block->type,
+                                'content'          => $block->content,
+                                'media_url'        => $block->media_url ? '/api/proxy/storage/' . $block->media_url : null,
+                                'settings'         => $block->settings,
+                                'duration_seconds' => $block->duration_seconds,
+                                'language'         => $block->language,
+                                'quiz_data'        => $quizData,
+                                'code_data'        => $block->code_data,
+                                'order'            => $block->order,
+                                'is_preview'       => $block->is_preview,
+                                'created_at'       => $block->created_at->toDateTimeString(),
+                            ];
+                        })->values()->toArray(),
+                    ];
+                })->values()->toArray(),
+            ];
+        })->values()->toArray(),
+    ]);
+}
 
     /**
  * Afficher un cours complet par son slug
  */
-public function showBySlug(Course $course)
+public function showBySlug(Request $request, Course $course)
 {
-    // $course = Course::where('slug', $slug)->firstOrFail();
+    $access = CourseAccessController::resolve($course, $request->user());
 
-    // Réutiliser la méthode existante pour charger la structure
-    return $this->show($course);
+    $course->load([
+        'domain:id,name,slug',
+        'teacher:id,name',
+        'modules' => function ($query) use ($access) {
+            $query->orderBy('order')->with([
+                'lessons' => function ($q) use ($access) {
+                    $q->orderBy('order');
+                    // Sans accès : ne charger que les leçons marquées preview,
+                    // et uniquement leurs blocks marqués preview.
+                    if (!$access['has_access']) {
+                        $q->where('is_preview', true);
+                    }
+                    $q->with(['blocks' => function ($qb) use ($access) {
+                        $qb->orderBy('order');
+                        if (!$access['has_access']) {
+                            $qb->where('is_preview', true);
+                        }
+                    }]);
+                }
+            ]);
+        }
+    ]);
+
+    return response()->json([
+        'id'          => $course->id,
+        'title'       => $course->title,
+        'slug'        => $course->slug,
+        'description' => $course->description,
+        'level'       => $course->level,
+        'language'    => $course->language,
+        'price'       => $course->price,
+        'is_free'     => $course->is_free,
+        'status'      => $course->status,
+        'thumbnail'   => $course->thumbnail ? '/api/proxy/storage/' . $course->thumbnail : null,
+        'has_access'  => $access['has_access'], 
+        'domain'      => $course->domain ? [
+            'id'   => $course->domain->id,
+            'name' => $course->domain->name,
+            'slug' => $course->domain->slug,
+        ] : null,
+        'teacher'     => $course->teacher ? [
+            'id'   => $course->teacher->id,
+            'name' => $course->teacher->name,
+        ] : null,
+        'created_at'  => $course->created_at->toDateTimeString(),
+        'updated_at'  => $course->updated_at->toDateTimeString(),
+        'modules' => $course->modules->map(function ($module) {
+            return [
+                'id'          => $module->id,
+                'title'       => $module->title,
+                'description' => $module->description,
+                'order'       => $module->order,
+                'created_at'  => $module->created_at->toDateTimeString(),
+                'lessons' => $module->lessons->map(function ($lesson) {
+                    return [
+                        'id'          => $lesson->id,
+                        'title'       => $lesson->title,
+                        'slug'        => $lesson->slug,
+                        'order'       => $lesson->order,
+                        'is_preview'  => $lesson->is_preview,
+                        'created_at'  => $lesson->created_at->toDateTimeString(),
+                        'blocks' => $lesson->blocks->map(function ($block) {
+                            $quizData = $block->quiz_data;
+                            if ($block->type === 'quiz' && isset($quizData['questions'])) {
+                                foreach ($quizData['questions'] as &$question) {
+                                    unset($question['correct_answer']);
+                                    unset($question['explanation']);
+                                }
+                            }
+                            return [
+                                'id'               => $block->id,
+                                'type'             => $block->type,
+                                'content'          => $block->content,
+                                'media_url'        => $block->media_url ? '/api/proxy/storage/' . $block->media_url : null,
+                                'settings'         => $block->settings,
+                                'duration_seconds' => $block->duration_seconds,
+                                'language'         => $block->language,
+                                'quiz_data'        => $quizData,
+                                'code_data'        => $block->code_data,
+                                'order'            => $block->order,
+                                'is_preview'       => $block->is_preview,
+                                'created_at'       => $block->created_at->toDateTimeString(),
+                            ];
+                        })->values()->toArray(),
+                    ];
+                })->values()->toArray(),
+            ];
+        })->values()->toArray(),
+    ]);
 }
 
     /**
@@ -566,7 +660,7 @@ public function myCourses(Request $request)
     private function calculateQuestionPoints(int $totalQuestions, float $totalScore = 100): float
     {
         if ($totalQuestions === 0) return 0;
-        
+
         // Points par question = Score total / Nombre de questions
         return round($totalScore / $totalQuestions, 2);
     }
@@ -574,28 +668,28 @@ public function myCourses(Request $request)
     private function isAnswerCorrect(array $question, array $selectedOptions): bool
     {
         $correctAnswers = $question['correct_answer'] ?? [];
-        
+
         // Si la question n'a pas de réponse correcte définie
         if (empty($correctAnswers)) {
             return false;
         }
-        
+
         // Trier les tableaux pour une comparaison équitable
         sort($selectedOptions);
         sort($correctAnswers);
-        
+
         // Si le type est 'single', une seule réponse est attendue
         if ($question['type'] === 'single') {
-            return count($selectedOptions) === 1 && 
-                   count($correctAnswers) === 1 && 
+            return count($selectedOptions) === 1 &&
+                   count($correctAnswers) === 1 &&
                    $selectedOptions[0] === $correctAnswers[0];
         }
-        
+
         // Pour 'multiple', comparer les tableaux complets
         return $selectedOptions === $correctAnswers;
     }
 
-    
+
 
     public function submitQuiz(Request $request, Course $course, Lesson $lesson, LessonBlock $block)
 {

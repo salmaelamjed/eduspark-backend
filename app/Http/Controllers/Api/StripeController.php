@@ -27,24 +27,38 @@ class StripeController extends Controller
         if (!$user->isTeacher()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Seuls les enseignants peuvent créer un compte Stripe.'
+                'message' => 'Seuls les enseignants peuvent créer un compte de paiement Stripe.'
             ], 403);
         }
 
-        if ($user->stripe_account_id) {
+       if ($user->stripe_account_id) {
             return response()->json([
                 'success' => true,
-                'message' => 'Compte Stripe déjà existant.',
+                'message' => 'Vous avez déjà un compte Stripe actif.',
                 'account_id' => $user->stripe_account_id,
                 'onboarding_completed' => $user->stripe_onboarding_completed
             ]);
         }
+
+    //     $request->validate([
+    //     'country' => 'required|string|size:2', // code ISO, ex: FR, BE, MA...
+    // ]);
+
+    // $country = strtoupper($request->input('country'));
+    // //  whitelister les pays supportés par Stripe Connect
+    // if (!in_array($country, config('services.stripe.supported_countries', ['FR']))) {
+    //     return response()->json([
+    //         'success' => false,
+    //         'message' => "Ce pays n'est pas encore supporté pour les paiements."
+    //     ], 422);
+    // }
 
         try {
             $account = $this->stripe->v2->core->accounts->create([
                 'contact_email' => $user->email,
                 'display_name' => $user->name,
                 'identity' => [
+                    // 'country' => $country,
                     'country' => 'FR',
                     'entity_type' => 'individual',
                 ],
@@ -53,7 +67,14 @@ class StripeController extends Controller
                         'capabilities' => [
                             'card_payments' => ['requested' => true],
                         ]
-                    ]
+                    ],
+                    'recipient' => [
+                    'capabilities' => [
+                        'stripe_balance' => [
+                            'stripe_transfers' => ['requested' => true],
+                        ],
+                    ],
+                ],
                 ],
                 'defaults' => [
                     'responsibilities' => [
@@ -68,9 +89,9 @@ class StripeController extends Controller
                 ]
             ]);
 
-            // Sauvegarde du compte
             $user->update([
                 'stripe_account_id' => $account->id,
+                // 'country' => $country,
                 'stripe_account_created_at' => now(),
                 'stripe_onboarding_completed' => false,
             ]);
@@ -84,13 +105,15 @@ class StripeController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Compte Stripe créé avec succès.',
+                'message' => 'Votre compte Stripe a été créé avec succès. Veuillez compléter le processus d\'inscription.',
                 'onboarding_url' => $accountLink->url,
                 'account_id' => $account->id,
                 'account_type' => 'merchant'
             ]);
 
         } catch (ApiErrorException $e) {
+               $errorCode = $e->getError()->code ?? null;
+            $userMessage = $this->getUserFriendlyMessage($errorCode, $e->getMessage());
             Log::error('Stripe account creation error:', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
@@ -116,9 +139,11 @@ class StripeController extends Controller
         if (!$user->stripe_account_id) {
             return response()->json([
                 'success' => true,
-                'has_account' => false
+                'has_account' => false,
+                'message' => 'Vous n\'avez pas encore de compte Stripe.'
             ]);
         }
+
 
         try {
             $account = $this->stripe->v2->core->accounts->retrieve(
@@ -126,23 +151,19 @@ class StripeController extends Controller
                 ['include' => ['configuration.merchant', 'identity', 'requirements', 'defaults']]
             );
 
-            //  Vérifier si le compte est complet (API v2)
             $isComplete = false;
             $chargesEnabled = false;
             $payoutsEnabled = false;
 
-            // Vérifier les capabilities dans la configuration merchant
             if (isset($account->configuration->merchant->capabilities)) {
                 $capabilities = $account->configuration->merchant->capabilities;
 
-                // Vérifier que card_payments est active
                 if (isset($capabilities->card_payments)) {
                     $chargesEnabled = $capabilities->card_payments->status === 'active';
                     $payoutsEnabled = $capabilities->card_payments->status === 'active';
                 }
             }
 
-            // Vérifier également les requirements pour savoir si tout est complet
             $requirements = $account->requirements ?? null;
             $requirementsComplete = true;
 
@@ -161,7 +182,11 @@ class StripeController extends Controller
                 ]);
             }
 
-            return response()->json([
+            $statusMessage = $isComplete
+                ? 'Votre compte Stripe est actif et prêt à recevoir des paiements.'
+                : 'Votre compte Stripe est en cours de configuration. Veuillez finaliser votre inscription.';
+
+             return response()->json([
                 'success' => true,
                 'has_account' => true,
                 'account_id' => $user->stripe_account_id,
@@ -169,21 +194,22 @@ class StripeController extends Controller
                 'status' => $isComplete ? 'active' : 'pending',
                 'charges_enabled' => $chargesEnabled,
                 'payouts_enabled' => $payoutsEnabled,
-                'requirements' => $requirements,
-                'capabilities' => $capabilities ?? null,
+                'message' => $statusMessage,
             ]);
 
         } catch (ApiErrorException $e) {
+             $errorCode = $e->getError()->code ?? null;
+            $userMessage = $this->getUserFriendlyMessage($errorCode, $e->getMessage());
             Log::error('Stripe account status error:', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            return response()->json([
+             return response()->json([
                 'success' => false,
-                'message' => 'Impossible de récupérer le statut du compte.',
-                'error' => $e->getMessage()
+                'message' => 'Nous rencontrons un problème technique. Veuillez réessayer plus tard.',
+                'code' => $errorCode
             ], 500);
         }
     }
@@ -198,7 +224,7 @@ class StripeController extends Controller
         if (!$user->stripe_account_id) {
             return response()->json([
                 'success' => false,
-                'message' => 'Aucun compte Stripe trouvé'
+                'message' => 'Vous n\'avez pas encore de compte Stripe.'
             ], 400);
         }
 
@@ -212,18 +238,22 @@ class StripeController extends Controller
 
             return response()->json([
                 'success' => true,
+                'message' => 'Vous avez été redirigé pour finaliser votre inscription Stripe.',
                 'onboarding_url' => $accountLink->url
             ]);
 
         } catch (ApiErrorException $e) {
+              $errorCode = $e->getError()->code ?? null;
+            $userMessage = $this->getUserFriendlyMessage($errorCode, $e->getMessage());
             Log::error('Stripe refresh onboarding error:', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json([
+             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors du rafraîchissement: ' . $e->getMessage()
+                'message' => $userMessage,
+                'code' => $errorCode
             ], 500);
         }
     }
@@ -259,47 +289,88 @@ class StripeController extends Controller
         return redirect($redirectUrl);
     }
 
-    /**
-     * Fonction de débogage pour voir les détails du compte (API v2)
+     /**
+     * Convertir les erreurs Stripe en messages compréhensibles pour l'utilisateur
      */
-    public function debugAccount(Request $request)
+    private function getUserFriendlyMessage(?string $errorCode, string $originalMessage): string
     {
-        $user = $request->user();
+        $messages = [
+            'invalid_email' => 'Votre email n\'est pas valide. Veuillez vérifier votre adresse email.',
+            'invalid_phone' => 'Votre numéro de téléphone n\'est pas valide.',
+            'invalid_country' => 'Le pays sélectionné n\'est pas supporté.',
+            'invalid_tax_id' => 'Votre numéro d\'identification fiscale n\'est pas valide.',
+            'invalid_birthday' => 'Votre date de naissance n\'est pas valide.',
+            'invalid_address' => 'Votre adresse n\'est pas valide. Veuillez vérifier les informations saisies.',
+            'invalid_dob' => 'Votre date de naissance doit correspondre au format requis par Stripe.',
+            'invalid_ssn' => 'Le numéro de sécurité sociale fourni n\'est pas valide.',
+            'invalid_identity' => 'Vos informations d\'identité ne sont pas valides.',
+            'invalid_account' => 'Les informations du compte bancaire fourni ne sont pas valides.',
+            'invalid_routing_number' => 'Le code de routage bancaire n\'est pas valide pour ce pays.',
+            'invalid_bank_account' => 'Le numéro de compte bancaire fourni n\'est pas valide.',
+            'invalid_currency' => 'La devise sélectionnée n\'est pas supportée.',
+            'invalid_iban' => 'Votre IBAN n\'est pas valide.',
+            'invalid_swift' => 'Le code SWIFT/BIC fourni n\'est pas valide.',
+            'invalid_bic' => 'Le code BIC fourni n\'est pas valide.',
+            'invalid_document' => 'Le document d\'identité fourni n\'est pas valide.',
+            'invalid_document_expired' => 'Votre document d\'identité est expiré.',
+            'invalid_verification' => 'La vérification d\'identité a échoué.',
 
-        if (!$user->stripe_account_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Aucun compte Stripe trouvé'
-            ], 400);
+            'missing_document' => 'Un document d\'identité est requis. Veuillez en fournir un.',
+            'missing_account' => 'Un compte bancaire est requis pour recevoir des paiements.',
+            'missing_address' => 'Votre adresse est requise.',
+            'missing_dob' => 'Votre date de naissance est requise.',
+            'missing_phone' => 'Votre numéro de téléphone est requis.',
+            'missing_tax_id' => 'Votre numéro d\'identification fiscale est requis.',
+
+            'unverified_identity' => 'Votre identité n\'a pas pu être vérifiée. Veuillez contacter le support.',
+            'unverified_bank' => 'Votre compte bancaire n\'a pas pu être vérifié.',
+            'unverified_business' => 'Votre entreprise n\'a pas pu être vérifiée.',
+
+            'account_exists' => 'Un compte Stripe existe déjà pour cet email.',
+            'account_already_verified' => 'Votre compte est déjà vérifié.',
+            'account_not_verified' => 'Votre compte n\'est pas encore vérifié.',
+
+            'rate_limit' => 'Trop de tentatives. Veuillez attendre quelques minutes avant de réessayer.',
+            'server_error' => 'Une erreur technique s\'est produite. Notre équipe a été notifiée.',
+            'connection_error' => 'Problème de connexion avec Stripe. Veuillez réessayer.',
+            'timeout' => 'La demande a expiré. Veuillez réessayer.',
+
+            'permission_denied' => 'Vous n\'avez pas les autorisations nécessaires.',
+            'not_authorized' => 'Vous n\'êtes pas autorisé à effectuer cette action.',
+        ];
+
+        // Si on a un message personnalisé pour ce code d'erreur
+        if ($errorCode && isset($messages[$errorCode])) {
+            return $messages[$errorCode];
         }
 
-        try {
-            $account = $this->stripe->v2->core->accounts->retrieve(
-                $user->stripe_account_id,
-                ['include' => ['configuration.merchant', 'identity', 'defaults', 'requirements']]
-            );
-
-            return response()->json([
-                'success' => true,
-                'account' => $account,
-                'account_id' => $user->stripe_account_id,
-                'account_created_at' => $user->stripe_account_created_at,
-                'onboarding_completed' => $user->stripe_onboarding_completed,
-            ]);
-
-        } catch (ApiErrorException $e) {
-            Log::error('Stripe debug account error:', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ], 500);
+        // Messages génériques selon le type d'erreur
+        if (strpos($originalMessage, 'email') !== false) {
+            return 'Veuillez vérifier votre adresse email.';
         }
+        if (strpos($originalMessage, 'phone') !== false) {
+            return 'Veuillez vérifier votre numéro de téléphone.';
+        }
+        if (strpos($originalMessage, 'address') !== false) {
+            return 'Veuillez vérifier votre adresse.';
+        }
+        if (strpos($originalMessage, 'bank') !== false) {
+            return 'Veuillez vérifier vos informations bancaires.';
+        }
+        if (strpos($originalMessage, 'document') !== false) {
+            return 'Un problème a été détecté avec votre document d\'identité.';
+        }
+        if (strpos($originalMessage, 'verification') !== false) {
+            return 'La vérification de votre identité a échoué.';
+        }
+        if (strpos($originalMessage, 'timeout') !== false) {
+            return 'La connexion avec Stripe a expiré. Veuillez réessayer.';
+        }
+
+        // Message par défaut pour les autres erreurs
+        return 'Nous rencontrons un problème avec Stripe. Veuillez réessayer ou contacter le support.';
     }
+
 
 
 }

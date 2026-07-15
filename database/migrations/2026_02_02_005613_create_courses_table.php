@@ -25,8 +25,10 @@ return new class extends Migration
     $table->foreignId('domain_id')->constrained()->onDelete('cascade');
     $table->foreignId('teacher_id')->constrained('users')->onDelete('cascade');
 
-    $table->enum('status', ['draft', 'published', 'archived'])->default('draft');
-
+    $table->enum('status', ['draft', 'published', 'archived'])->default('published ');
+        $table->string('currency')->default('EUR');
+    $table->string('stripe_product_id')->nullable();
+    $table->string('stripe_price_id')->nullable();
     $table->timestamps();
 });
     }

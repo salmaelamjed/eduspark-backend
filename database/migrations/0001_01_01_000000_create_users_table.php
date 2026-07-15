@@ -19,11 +19,13 @@ return new class extends Migration
             $table->string('password');
             $table->enum('role', ['student', 'teacher', 'admin'])->default('student');
             $table->boolean('is_active')->default(true);
-
+            $table->string('country', 2)->nullable();
             $table->string('profile_picture')->nullable();
             $table->text('bio')->nullable();
             $table->string('headline')->nullable();
-
+            $table->json('social_links')->nullable();
+            $table->string('expertise_level')->nullable();
+            $table->date('date_of_birth')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });

@@ -2,7 +2,7 @@
 
 return [
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout', 'register', 'verify-email', 'resend-verification-code'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout', 'register', 'verify-email', 'resend-verification-code','stripe/webhook'],
 
     'allowed_methods' => ['*'],
 
@@ -17,8 +17,8 @@ return [
 
     'exposed_headers' => ['X-CSRF-TOKEN'],
 
-    'max_age' => 0,
+    'max_age' => 3600,
 
-    'supports_credentials' => true,  // ABSOLUMENT OBLIGATOIRE
+    'supports_credentials' => true,  
 
 ];

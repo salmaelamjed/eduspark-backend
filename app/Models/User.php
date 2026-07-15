@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -19,16 +18,26 @@ class User extends Authenticatable
      *
      * @var list<string>
      */
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-         'role',
-         'is_active',
-         'profile_picture',
-         'bio',
-         'headline',
-    ];
+   protected $fillable = [
+    'name',
+    'email',
+    'password',
+    'role',
+    'is_active',
+    'profile_picture',
+    'bio',
+    'headline',
+    'country',
+    'social_links',
+    'expertise_level',
+    'date_of_birth',
+    'stripe_account_id',
+    'stripe_onboarding_completed',
+    'stripe_account_created_at',
+    'stripe_account_updated_at',
+    'total_earnings',
+    'total_commission_paid',
+];
 
     /**
      * The attributes that should be hidden for serialization.
@@ -50,6 +59,14 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
+            'social_links' => 'array',
+            'date_of_birth' => 'date',
+            'stripe_onboarding_completed' => 'boolean',
+            'stripe_account_created_at' => 'datetime',
+            'stripe_account_updated_at' => 'datetime',
+            'total_earnings' => 'decimal:2',
+            'total_commission_paid' => 'decimal:2',
         ];
     }
 

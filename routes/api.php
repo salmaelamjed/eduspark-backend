@@ -1,10 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CourseAccessController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DomainController;
 use App\Http\Controllers\Api\ModuleController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\StripeController;
+use App\Http\Controllers\Api\StripeWebhookController;
 use App\Http\Controllers\Api\TeacherRequestController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -48,11 +52,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/courses/{course}/lessons/{lesson}/blocks/{block}/quiz/submit',
         [CourseController::class, 'submitQuiz']
     );
-    //stripe
+    //stripe connection
     Route::post('/stripe/connect', [StripeController::class, 'createConnectAccount']);
     Route::get('/stripe/status', [StripeController::class, 'getAccountStatus']);
-Route::post('/stripe/refresh-link', [StripeController::class, 'refreshOnboarding']);
+    Route::post('/stripe/refresh-link', [StripeController::class, 'refreshOnboarding']);
 
+    //Payment
+    Route::post('/courses/{course}/checkout', [PaymentController::class, 'createPaymentIntent']);
+
+    //Purchase
+    Route::get('/purchases/{purchase}', [PurchaseController::class, 'show']);
+
+    Route::get('/courses/{course}/access', [CourseAccessController::class, 'check']);
 
 
 
@@ -65,4 +76,5 @@ Route::post('/stripe/refresh-link', [StripeController::class, 'refreshOnboarding
     Route::get('/stripe/success', [StripeController::class, 'onboardingSuccess'])->name('stripe.success');
 Route::get('/stripe/refresh', [StripeController::class, 'onboardingRefresh'])->name('stripe.refresh');
 
+Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle']);
 
