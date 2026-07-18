@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\CourseAccessController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DomainController;
@@ -65,7 +66,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/courses/{course}/access', [CourseAccessController::class, 'check']);
 
-
+    //chat
+    Route::get('/rooms', [ChatController::class, 'index'])->name('rooms.index');
+    Route::post('/rooms', [ChatController::class, 'store'])->name('rooms.store');
+    Route::get('/rooms/{room}/messages', [ChatController::class, 'messages'])->name('rooms.messages');
+    Route::post('/rooms/{room}/messages', [ChatController::class, 'sendMessage'])->name('rooms.messages.store');
+    Route::post('/rooms/{room}/switch-to-human', [ChatController::class, 'switchToHuman'])->name('rooms.switch-human');
+    Route::post('/rooms/{room}/switch-to-ai', [ChatController::class, 'switchToAi'])->name('rooms.switch-ai');
 
 
 });
