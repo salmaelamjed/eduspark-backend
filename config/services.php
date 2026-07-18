@@ -20,6 +20,11 @@ return [
         'account_id' => env('STRIPE_ACCOUNT_ID'),
         'commission_rate' => env('STRIPE_COMMISSION_RATE', 10),
     ],
+    'groq' => [
+    'api_key' => env('GROQ_API_KEY'),
+    'model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+    'api_url' => env('GROQ_API_URL', 'https://api.groq.com/openai/v1/chat/completions'),
+    ],
 
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
