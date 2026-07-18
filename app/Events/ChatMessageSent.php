@@ -2,37 +2,32 @@
 
 namespace App\Events;
 
-use App\Http\Resources\ChatRoomResource;
-use App\Models\ChatRoom;
+use App\Http\Resources\ChatMessageResource;
+use App\Models\ChatMessage;
+use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class ChatRoomModeSwitched implements ShouldBroadcast
+class ChatMessageSent implements ShouldBroadcast
 {
-    use Dispatchable, SerializesModels;
+    use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(public readonly ChatRoom $room) {}
+    public function __construct(public readonly ChatMessage $message) {}
 
     public function broadcastOn(): array
     {
-        $channels = [new PrivateChannel('chat-room.'.$this->room->id)];
-
-        if ($this->room->teacher_id) {
-            $channels[] = new PrivateChannel('teacher.'.$this->room->teacher_id);
-        }
-
-        return $channels;
+        return [new PrivateChannel('chat-room.'.$this->message->chat_room_id)];
     }
 
     public function broadcastAs(): string
     {
-        return 'chat.mode-switched';
+        return 'chat.message';
     }
 
     public function broadcastWith(): array
     {
-        return (new ChatRoomResource($this->room->load('course:id,title')))->resolve();
+        return (new ChatMessageResource($this->message))->resolve();
     }
 }
