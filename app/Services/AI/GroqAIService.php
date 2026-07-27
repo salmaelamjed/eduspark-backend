@@ -101,9 +101,10 @@ public static function fromConfig(): self
 
     private function buildLessonContext(Lesson $lesson): string
     {
-        $lesson->loadMissing('blocks');
+        $lesson->loadMissing('blocks','module');
 
-        $context = "L'étudiant consulte actuellement la leçon : \"{$lesson->title}\"\n\n";
+        $context = "Module : \"{$lesson->module->title}\"\n";
+       $context .= "L'étudiant consulte actuellement la leçon : \"{$lesson->title}\"\n\n";
 
         foreach ($lesson->blocks as $block) {
             $context .= match ($block->type) {

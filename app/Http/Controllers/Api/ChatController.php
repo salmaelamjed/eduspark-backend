@@ -27,7 +27,7 @@ class ChatController extends Controller
             : ChatRoom::query()->where('student_id', $user->id)->active();
 
         $rooms = $rooms
-            ->with(['course:id,title,slug', 'lesson:id,title', 'student:id,name', 'teacher:id,name'])
+            ->with(['course:id,title,slug', 'lesson:id,title', 'student:id,name', 'teacher:id,name','latestMessage',])
             ->latest('last_message_at')
             ->get();
 
@@ -97,5 +97,14 @@ class ChatController extends Controller
         $this->authorize('switchToAi', $room);
 
         return new ChatRoomResource($this->chatRoomService->switchToAi($room));
+    }
+
+        public function markAsRead(Request $request, ChatRoom $room)
+    {
+        $this->authorize('view', $room);
+
+        $room->markAsReadFor($request->user());
+
+        return new ChatRoomResource($room->fresh(['latestMessage']));
     }
 }

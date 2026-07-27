@@ -73,7 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/rooms/{room}/messages', [ChatController::class, 'sendMessage'])->name('rooms.messages.store');
     Route::post('/rooms/{room}/switch-to-human', [ChatController::class, 'switchToHuman'])->name('rooms.switch-human');
     Route::post('/rooms/{room}/switch-to-ai', [ChatController::class, 'switchToAi'])->name('rooms.switch-ai');
-
+    Route::post('/rooms/{room}/read', [ChatController::class, 'markAsRead']);
 
 });
     //les routes de courses pour les personnes non authentifie

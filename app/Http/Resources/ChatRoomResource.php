@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class ChatRoomResource extends JsonResource
 {
@@ -30,8 +31,15 @@ class ChatRoomResource extends JsonResource
                 'id' => $this->teacher?->id,
                 'name' => $this->teacher?->name,
             ]),
-            'last_message_at' => $this->last_message_at?->toIso8601String(),
+            'last_message' => $this->whenLoaded('latestMessage', fn () => $this->latestMessage ? [
+            'content' => Str::limit($this->latestMessage->content, 80),
+            'sender_type' => $this->latestMessage->sender_type->value,
+        ] : null),
             'created_at' => $this->created_at->toIso8601String(),
+            'unread_count' => $request->user()
+                ? $this->unreadCountFor($request->user())
+                : 0,
+            'last_message_at' => $this->last_message_at?->toIso8601String(),
         ];
     }
 }

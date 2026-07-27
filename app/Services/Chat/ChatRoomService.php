@@ -33,7 +33,7 @@ class ChatRoomService
             [
                 'lesson_id' => $lessonId,
                 'mode' => ChatMode::AI,
-                'status' => ChatRoomStatus::ACTIVE, 
+                'status' => ChatRoomStatus::ACTIVE,
             ],
         );
 
@@ -163,7 +163,14 @@ class ChatRoomService
         ]);
 
         $room->update(['last_message_at' => now()]);
+         if ($senderType === SenderType::STUDENT) {
+        $updates['student_last_read_at'] = now();
+    } elseif ($senderType === SenderType::TEACHER) {
+        $updates['teacher_last_read_at'] = now();
+    }
 
+    $room->update($updates);
+    
         return $message;
     }
 }
