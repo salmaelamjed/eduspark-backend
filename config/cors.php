@@ -2,7 +2,7 @@
 
 return [
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'logout', 'register', 'verify-email', 'resend-verification-code','stripe/webhook'],
+    'paths' => ['https://eduspark-20sfydw9.b4a.run/api/','api/*', 'sanctum/csrf-cookie', 'login', 'logout', 'register', 'verify-email', 'resend-verification-code','stripe/webhook'],
 
     'allowed_methods' => ['*'],
 
