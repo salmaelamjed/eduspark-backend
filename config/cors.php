@@ -9,6 +9,7 @@ return [
     'allowed_origins' => [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
+        'https://eduspark-frontend-one.vercel.app'
     ],
 
     'allowed_origins_patterns' => [],
@@ -19,6 +20,6 @@ return [
 
     'max_age' => 3600,
 
-    'supports_credentials' => true,  
+    'supports_credentials' => true,
 
 ];
