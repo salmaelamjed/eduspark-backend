@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ThrottleSensitiveProfileAction;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,11 +21,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'stripe/webhook',
         ]);
+
+        // Migré depuis l'ancien app/Http/Kernel.php ($middlewareAliases)
+        $middleware->alias([
+            'role' => \App\Http\Middleware\CheckRole::class,
+        ]);
+         $middleware->alias([
+        'throttle.profile' => ThrottleSensitiveProfileAction::class,
+    ]);
     })
-    ->withBroadcasting(
-        __DIR__.'/../routes/channels.php',
-        ['middleware' => ['api', 'auth:sanctum']],
-    )
+
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();

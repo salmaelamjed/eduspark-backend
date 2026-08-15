@@ -6,8 +6,10 @@ use App\Models\ChatRoom;
 use App\Policies\ChatRoomPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use App\Services\AI\GroqAIService;
-use Illuminate\Routing\UrlGenerator;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,5 +21,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(ChatRoom::class, ChatRoomPolicy::class);
+
+        RateLimiter::for('api', function (Request $request) {
+            return Limit::perMinute(60)->by(
+                $request->user()?->id ?: $request->ip()
+            );
+        });
+
+        RateLimiter::for('sanctum', function (Request $request) {
+            return Limit::perMinute(30)->by($request->ip());
+        });
+
+
     }
 }

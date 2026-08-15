@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Builder;
 
 class CourseEnrollment extends Model
 {
@@ -20,6 +21,7 @@ class CourseEnrollment extends Model
         'student_id',
         'purchase_id',
         'enrolled_at',
+        'teacher_notes',
     ];
 
     /**
@@ -53,5 +55,10 @@ class CourseEnrollment extends Model
     public function purchase(): BelongsTo
     {
         return $this->belongsTo(CoursePurchase::class, 'purchase_id');
+    }
+
+    public function scopeForTeacher(Builder $query, int $teacherId): Builder
+    {
+        return $query->whereHas('course', fn (Builder $q) => $q->where('teacher_id', $teacherId));
     }
 }

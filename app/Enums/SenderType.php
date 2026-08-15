@@ -8,4 +8,9 @@ enum SenderType: string
     case TEACHER = 'teacher';
     case AI = 'ai';
     case SYSTEM = 'system';
+
+      public function isStudent(): bool
+    {
+        return $this === self::STUDENT;
+    }
 }

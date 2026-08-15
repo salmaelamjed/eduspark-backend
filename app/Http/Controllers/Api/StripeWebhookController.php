@@ -12,9 +12,13 @@ use Illuminate\Support\Facades\DB;
 use Stripe\Webhook;
 use Stripe\Exception\SignatureVerificationException;
 use UnexpectedValueException;
+use App\Actions\CompleteCoursePurchase;
+
 
 class StripeWebhookController extends Controller
 {
+
+
     public function handle(Request $request)
     {
         $payload = $request->getContent();
@@ -50,61 +54,7 @@ class StripeWebhookController extends Controller
 
     private function handlePaymentSucceeded($paymentIntent): void
     {
-        DB::transaction(function () use ($paymentIntent) {
-            // lockForUpdate : si Stripe renvoie le même événement deux fois
-            // (retry réseau), on évite un traitement concurrent en double.
-            $purchase = CoursePurchase::where('stripe_payment_intent_id', $paymentIntent->id)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$purchase) {
-                Log::warning('Webhook: purchase introuvable pour ce PaymentIntent', [
-                    'payment_intent_id' => $paymentIntent->id,
-                ]);
-                return;
-            }
-
-            // Idempotence : déjà traité, on ne refait rien (ni double
-            // enrollment, ni double ligne de commission).
-            if ($purchase->status === 'completed') {
-                return;
-            }
-
-            $purchase->update([
-                'status' => 'completed',
-                'purchased_at' => now(),
-            ]);
-
-            CourseEnrollment::firstOrCreate(
-                [
-                    'course_id' => $purchase->course_id,
-                    'student_id' => $purchase->student_id,
-                ],
-                [
-                    'purchase_id' => $purchase->id,
-                    'enrolled_at' => now(),
-                ]
-            );
-
-            Commission::create([
-                'purchase_id' => $purchase->id,
-                'teacher_id' => $purchase->teacher_id,
-                'course_id' => $purchase->course_id,
-                'amount' => $purchase->commission_amount,
-                'status' => 'paid', // le transfert Stripe est déjà fait via application_fee_amount
-                'paid_at' => now(),
-            ]);
-
-            $teacher = $purchase->teacher;
-            $teacher->increment('total_earnings', $purchase->teacher_amount);
-            $teacher->increment('total_commission_paid', $purchase->commission_amount);
-
-            Log::info('Achat complété via webhook', [
-                'purchase_id' => $purchase->id,
-                'course_id' => $purchase->course_id,
-                'student_id' => $purchase->student_id,
-            ]);
-        });
+        app(CompleteCoursePurchase::class)->handle($paymentIntent);
     }
 
     private function handlePaymentFailed($paymentIntent): void

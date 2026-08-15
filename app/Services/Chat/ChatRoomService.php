@@ -5,12 +5,12 @@ namespace App\Services\Chat;
 use App\Enums\ChatMode;
 use App\Enums\ChatRoomStatus;
 use App\Enums\SenderType;
-use App\Events\ChatMessageSent;
-use App\Events\ChatRoomModeSwitched;
+
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\AI\GroqAIService;
+use App\Services\Notification\NotificationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -20,22 +20,23 @@ class ChatRoomService
 
     public function __construct(
         private readonly GroqAIService $ai,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function findOrCreateRoom(User $student, int $courseId, ?int $lessonId): ChatRoom
     {
         $room = ChatRoom::query()
-            ->where('student_id',$student->id)
-            ->where('course_id',$courseId)
+            ->where('student_id', $student->id)
+            ->where('course_id', $courseId)
             ->where('status', ChatRoomStatus::ACTIVE)
-             ->firstOrCreate(
-            ['student_id' => $student->id, 'course_id' => $courseId],
-            [
-                'lesson_id' => $lessonId,
-                'mode' => ChatMode::AI,
-                'status' => ChatRoomStatus::ACTIVE,
-            ],
-        );
+            ->firstOrCreate(
+                ['student_id' => $student->id, 'course_id' => $courseId],
+                [
+                    'lesson_id' => $lessonId,
+                    'mode' => ChatMode::AI,
+                    'status' => ChatRoomStatus::ACTIVE,
+                ],
+            );
 
         if ($lessonId && $room->lesson_id !== $lessonId) {
             $room->update(['lesson_id' => $lessonId]);
@@ -51,10 +52,8 @@ class ChatRoomService
     {
         $senderType = $sender->id === $room->student_id ? SenderType::STUDENT : SenderType::TEACHER;
 
-        return DB::transaction(function () use ($room, $sender, $content, $senderType) {
+        $result = DB::transaction(function () use ($room, $sender, $content, $senderType) {
             $userMessage = $this->createMessage($room, $senderType, $sender->id, $content);
-
-            broadcast(new ChatMessageSent($userMessage))->toOthers();
 
             $aiMessage = null;
 
@@ -64,6 +63,21 @@ class ChatRoomService
 
             return ['user_message' => $userMessage, 'ai_message' => $aiMessage];
         });
+
+        // Notification: uniquement si un humain doit être averti.
+        // - Mode humain + message étudiant  -> notifier le prof
+        // - Message du prof (peu importe le mode) -> notifier l'étudiant
+        $recipient = match (true) {
+            $senderType === SenderType::STUDENT && $room->isHumanMode() => $room->teacher,
+            $senderType === SenderType::TEACHER => $room->student,
+            default => null, // IA a répondu, pas de notif humaine nécessaire
+        };
+
+        if ($recipient) {
+            $this->notifications->notifyNewChatMessage($room, $result['user_message'], $recipient);
+        }
+
+        return $result;
     }
 
     public function switchToHuman(ChatRoom $room): ChatRoom
@@ -82,9 +96,11 @@ class ChatRoomService
             "L'étudiant a demandé un enseignant réel. La conversation passe en direct."
         );
 
-        broadcast(new ChatRoomModeSwitched($room));
+        $room = $room->fresh(['teacher:id,name', 'course', 'student:id,name']);
 
-        return $room->fresh(['teacher:id,name']);
+        $this->notifications->notifySwitchToHuman($room);
+
+        return $room;
     }
 
     public function switchToAi(ChatRoom $room): ChatRoom
@@ -98,9 +114,11 @@ class ChatRoomService
             'La conversation repasse en mode assistant IA.'
         );
 
-        broadcast(new ChatRoomModeSwitched($room));
+        $room = $room->fresh(['course', 'student:id,name']);
 
-        return $room->fresh();
+        $this->notifications->notifySwitchToAi($room);
+
+        return $room;
     }
 
     private function generateAiReply(ChatRoom $room): ChatMessage
@@ -141,11 +159,7 @@ class ChatRoomService
             $meta = ['error' => true];
         }
 
-        $aiMessage = $this->createMessage($room, SenderType::AI, null, $content, $meta);
-
-        broadcast(new ChatMessageSent($aiMessage))->toOthers();
-
-        return $aiMessage;
+        return $this->createMessage($room, SenderType::AI, null, $content, $meta);
     }
 
     private function createMessage(
@@ -162,15 +176,16 @@ class ChatRoomService
             'meta' => $meta,
         ]);
 
-        $room->update(['last_message_at' => now()]);
-         if ($senderType === SenderType::STUDENT) {
-        $updates['student_last_read_at'] = now();
-    } elseif ($senderType === SenderType::TEACHER) {
-        $updates['teacher_last_read_at'] = now();
-    }
+        $updates = ['last_message_at' => now()];
 
-    $room->update($updates);
-    
+        if ($senderType === SenderType::STUDENT) {
+            $updates['student_last_read_at'] = now();
+        } elseif ($senderType === SenderType::TEACHER) {
+            $updates['teacher_last_read_at'] = now();
+        }
+
+        $room->update($updates);
+
         return $message;
     }
 }

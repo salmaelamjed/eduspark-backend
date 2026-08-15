@@ -58,14 +58,17 @@ return [
     'prefix_indexes' => true,
     'strict' => true,
     'engine' => null,
+    // 'options' => extension_loaded('pdo_mysql') ? [
+    //     PDO::ATTR_EMULATE_PREPARES => true,
+    //     PDO::ATTR_TIMEOUT => 60,
+    //     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    //     // Désactiver SSL pour le test
+    //     PDO::MYSQL_ATTR_SSL_CA => null,
+    //     PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
+    // ] : [],
     'options' => extension_loaded('pdo_mysql') ? [
-        PDO::ATTR_EMULATE_PREPARES => true,
-        PDO::ATTR_TIMEOUT => 60,
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        // Désactiver SSL pour le test
-        PDO::MYSQL_ATTR_SSL_CA => null,
-        PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
-    ] : [],
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+] : [],
 ],
 
         'mariadb' => [

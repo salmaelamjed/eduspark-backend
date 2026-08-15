@@ -196,16 +196,14 @@ public function resendVerificationCode(Request $request)
 
 public function login(Request $request)
 {
-    // Validation des données
     $request->validate([
         'email' => 'required|email',
         'password' => 'required|string',
     ]);
 
-    // Rechercher l'utilisateur par email
     $user = User::where('email', $request->email)->first();
 
-    // Vérifier si l'utilisateur existe et si le mot de passe est correct
+   
     if (!$user || !Hash::check($request->password, $user->password)) {
         Log::warning('Tentative de connexion échouée', [
             'email' => $request->email,
@@ -216,6 +214,20 @@ public function login(Request $request)
             'success' => false,
             'message' => 'Email ou mot de passe incorrect.'
         ], 401);
+    }
+    
+     if (!$user->is_active) {
+        Log::info('Tentative de connexion sur un compte désactivé', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => "Ce compte a été désactivé. Contactez le support si vous pensez qu'il s'agit d'une erreur.",
+            'account_deactivated' => true,
+        ], 403);
     }
 
     // Vérifier si l'email est vérifié

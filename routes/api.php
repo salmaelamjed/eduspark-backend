@@ -6,10 +6,14 @@ use App\Http\Controllers\Api\CourseAccessController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\DomainController;
 use App\Http\Controllers\Api\ModuleController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\StripeController;
 use App\Http\Controllers\Api\StripeWebhookController;
+use App\Http\Controllers\Api\Teacher\StudentController;
+use App\Http\Controllers\Api\Teacher\StatsController;
 use App\Http\Controllers\Api\TeacherRequestController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +79,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/rooms/{room}/switch-to-ai', [ChatController::class, 'switchToAi'])->name('rooms.switch-ai');
     Route::post('/rooms/{room}/read', [ChatController::class, 'markAsRead']);
 
+    Route::prefix('notifications')->group(function () {
+    Route::get('/', [NotificationController::class, 'index']);
+    Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::post('/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/{id}', [NotificationController::class, 'destroy']);
+});
+
+
 });
     //les routes de courses pour les personnes non authentifie
     Route::get('/courses', action: [CourseController::class, 'index']);
@@ -84,4 +97,50 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::get('/stripe/refresh', [StripeController::class, 'onboardingRefresh'])->name('stripe.refresh');
 
 Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle']);
+
+
+
+Route::middleware(['auth:sanctum', 'role:teacher'])->prefix('teacher')->group(function () {
+
+    // Gestion des étudiants
+    Route::get('/students', [StudentController::class, 'index']);
+    Route::get('/students/{student}', [StudentController::class, 'show'])->whereNumber('student');
+    Route::delete('/students/{student}', [StudentController::class, 'destroy'])->whereNumber('student');
+    Route::patch('/enrollments/{enrollment}', [StudentController::class, 'updateEnrollment'])->whereNumber('enrollment');
+    Route::get('/courses/{course}/students', [StudentController::class, 'byCourse'])->whereNumber('course');
+
+    // Statistiques
+    Route::get('/stats/dashboard', [StatsController::class, 'dashboard']);
+    Route::get('/stats/courses/{course}', [StatsController::class, 'courseStats'])->whereNumber('course');
+});
+
+
+
+
+Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('profile')->group(function () {
+
+    Route::get('/', [ProfileController::class, 'show']);
+    Route::get('/{id}', [ProfileController::class, 'showPublic'])->whereNumber('id');
+
+    Route::put('/', [ProfileController::class, 'update']);
+    Route::put('/social-links', [ProfileController::class, 'updateSocialLinks']);
+
+    Route::post('/avatar', [ProfileController::class, 'updateAvatar'])
+        ->middleware('throttle.profile:avatar,10,15');
+
+    Route::delete('/avatar', [ProfileController::class, 'deleteAvatar'])
+        ->middleware('throttle.profile:avatar,10,15');
+
+    Route::put('/password', [ProfileController::class, 'updatePassword'])
+        ->middleware('throttle.profile:password,5,15');
+
+    Route::put('/email', [ProfileController::class, 'updateEmail'])
+        ->middleware('throttle.profile:email,3,30');
+
+    Route::post('/deactivate', [ProfileController::class, 'deactivate'])
+        ->middleware('throttle.profile:deactivate,3,60');
+            Route::post('/admin/users/{id}/deactivate', [ProfileController::class, 'adminDeactivate']);
+
+});
+
 
