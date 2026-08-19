@@ -267,6 +267,7 @@ public function login(Request $request)
                 'email' => $user->email,
                 'role' => $user->role,
                 'email_verified_at' => $user->email_verified_at,
+                'profile_picture'=>$user->profile_picture,
             ]
         ], 200);
 

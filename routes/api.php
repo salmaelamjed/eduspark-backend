@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Teacher\StatsController;
 use App\Http\Controllers\Api\TeacherRequestController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\Admin\AdminController;
 
 Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
     return $request->user();
@@ -31,6 +32,8 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword'])
     ->middleware('throttle:10,1');
     Route::get('/domains', [DomainController::class, 'getDomains']);
     Route::get('/get-domains', [DomainController::class, 'index']);
+    Route::get('/courses/best', [CourseController::class, 'bestCourses'])
+    ->name('courses.best');
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/teacher-requests', [TeacherRequestController::class, 'store']);
@@ -140,7 +143,48 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('profile')->group(fu
     Route::post('/deactivate', [ProfileController::class, 'deactivate'])
         ->middleware('throttle.profile:deactivate,3,60');
             Route::post('/admin/users/{id}/deactivate', [ProfileController::class, 'adminDeactivate']);
-
 });
+
+
+
+Route::middleware(['auth:sanctum', 'role:admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+
+        // Dashboard
+        Route::get('stats', [AdminController::class, 'stats'])->name('stats');
+        Route::get('revenue-by-month', [AdminController::class, 'revenueByMonth']);
+        Route::get('top-courses', [AdminController::class, 'topCourses']);
+        // Utilisateurs
+        Route::get('users', [AdminController::class, 'users'])->name('users.index');
+        Route::get('users/{user}', [AdminController::class, 'showUser'])->name('users.show');
+        Route::patch('users/{user}/toggle-status', [AdminController::class, 'toggleUserStatus'])->name('users.toggle-status');
+        Route::patch('users/{user}/role', [AdminController::class, 'updateUserRole'])->name('users.update-role');
+        Route::delete('users/{user}', [AdminController::class, 'deleteUser'])->name('users.destroy');
+
+        // Demandes teacher
+        Route::get('teacher-requests', [AdminController::class, 'teacherRequests'])->name('teacher-requests.index');
+        Route::patch('teacher-requests/{teacherRequest}/approve', [AdminController::class, 'approveTeacherRequest'])->name('teacher-requests.approve');
+        Route::patch('teacher-requests/{teacherRequest}/reject', [AdminController::class, 'rejectTeacherRequest'])->name('teacher-requests.reject');
+
+        // Domaines
+        Route::get('domains', [AdminController::class, 'domains'])->name('domains.index');
+        Route::post('domains', [AdminController::class, 'storeDomain'])->name('domains.store');
+        Route::patch('domains/{domain}', [AdminController::class, 'updateDomain'])->name('domains.update');
+        Route::delete('domains/{domain}', [AdminController::class, 'deleteDomain'])->name('domains.destroy');
+
+        // Cours (modération)
+        Route::get('courses', [AdminController::class, 'courses'])->name('courses.index');
+        Route::get('courses/{course}', [AdminController::class, 'showCourse'])->name('courses.show');
+        Route::patch('courses/{course}/status', [AdminController::class, 'updateCourseStatus'])->name('courses.update-status');
+        Route::delete('courses/{course}', [AdminController::class, 'deleteCourse'])->name('courses.destroy');
+
+        // Finance
+        Route::get('purchases', [AdminController::class, 'purchases'])->name('purchases.index');
+        Route::get('commissions', [AdminController::class, 'commissions'])->name('commissions.index');
+    });
+
+
 
 

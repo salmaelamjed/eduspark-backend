@@ -21,14 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'stripe/webhook',
         ]);
-
-        // Migré depuis l'ancien app/Http/Kernel.php ($middlewareAliases)
-        $middleware->alias([
-            'role' => \App\Http\Middleware\CheckRole::class,
-        ]);
-         $middleware->alias([
-        'throttle.profile' => ThrottleSensitiveProfileAction::class,
-    ]);
+       $middleware->alias([ 'role' => \App\Http\Middleware\CheckRole::class, 
+       'throttle.profile' => ThrottleSensitiveProfileAction::class, ]);
+       
     })
 
     ->withExceptions(function (Exceptions $exceptions): void {

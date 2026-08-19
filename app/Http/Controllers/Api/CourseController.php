@@ -25,7 +25,7 @@ public function index(Request $request)
 
     $paginator = Course::query()
         ->with(['domain:id,name,slug', 'teacher:id,name'])
-        ->select(['id','title','slug','level','language','price','is_free','status','thumbnail','domain_id','teacher_id','created_at'])
+        ->select(['id','title','description','slug','level','language','price','is_free','status','thumbnail','domain_id','teacher_id','created_at'])
         ->when($request->search,     fn($q) => $q->where('title', 'like', "%{$request->search}%"))
         ->when($request->level,      fn($q) => $q->where('level', $request->level))
         ->when($request->language,   fn($q) => $q->where('language', $request->language))
@@ -53,6 +53,7 @@ public function index(Request $request)
             'id'          => $course->id,
             'title'       => $course->title,
             'slug'        => $course->slug,
+            'description' => $course->description,
             'level'       => $course->level,
             'language'    => $course->language,
             'price'       => $course->price,
@@ -71,6 +72,50 @@ public function index(Request $request)
         'last_page'    => $paginator->lastPage(),
         'per_page'     => $paginator->perPage(),
         'total'        => $paginator->total(),
+    ]);
+}
+
+/**
+ * Retourne les meilleurs cours de la plateforme pour la landing page,
+ * classés par nombre d'inscriptions (achats complétés).
+ *
+ * Uniquement les cours publiés — jamais de draft/archived côté public.
+ */
+public function bestCourses(Request $request)
+{
+    $validated = $request->validate([
+        'limit' => 'nullable|integer|min:1|max:20',
+    ]);
+
+    $limit = $validated['limit'] ?? 10;
+
+    $courses = Course::query()
+        ->where('status', 'published')
+        ->select(['id', 'title', 'slug', 'description', 'level', 'language', 'price', 'is_free', 'thumbnail', 'domain_id', 'teacher_id', 'created_at']) // ✅ select() EN PREMIER
+        ->withCount('enrollments') // ✅ ajoute enrollments_count APRÈS, sans écraser le select
+        ->with(['domain:id,name,slug', 'teacher:id,name'])
+        ->orderByDesc('enrollments_count')
+        ->limit($limit)
+        ->get();
+
+    return response()->json([
+        'data' => $courses->map(fn ($course) => [
+            'id'          => $course->id,
+            'title'       => $course->title,
+            'slug'        => $course->slug,
+            'thumbnail'   => $course->thumbnail ? '/api/proxy/storage/' . $course->thumbnail : null,
+            'price'       => $course->price,
+            'is_free'     => $course->is_free,
+            'level'       => $course->level,
+            'language'    => $course->language,
+            'domain'      => $course->domain ? [
+                'id'   => $course->domain->id,
+                'name' => $course->domain->name,
+                'slug' => $course->domain->slug,
+            ] : null,
+            'teacher'     => $course->teacher?->name,
+            'enrollments' => (int) $course->enrollments_count,
+        ])->values()->toArray(),
     ]);
 }
     /**
